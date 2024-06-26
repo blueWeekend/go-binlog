@@ -1,12 +1,11 @@
 module go-binlog
 
-go 1.19
+go 1.18
 
 require (
 	github.com/dgraph-io/badger/v3 v3.2103.5
 	github.com/go-mysql-org/go-mysql v1.8.0
 	github.com/json-iterator/go v1.1.12
-	github.com/siddontang/go-log v0.0.0-20180807004314-8d05993dda07
 )
 
 require (
@@ -36,6 +35,7 @@ require (
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/shopspring/decimal v1.2.0 // indirect
 	github.com/siddontang/go v0.0.0-20180604090527-bdc77568d726 // indirect
+	github.com/siddontang/go-log v0.0.0-20180807004314-8d05993dda07 // indirect
 	go.opencensus.io v0.22.5 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect

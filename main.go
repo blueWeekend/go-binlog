@@ -1,8 +1,8 @@
 package main
 
 import (
-	"binlog/src"
 	"fmt"
+	"go-binlog/src"
 )
 
 func main() {
