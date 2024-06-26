@@ -1,4 +1,4 @@
-module binlog
+module go-binlog
 
 go 1.19
 
