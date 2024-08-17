@@ -1,0 +1,4 @@
+/binlog_position
+/vendor
+*.exe
+.idea/
