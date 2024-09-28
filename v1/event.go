@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"sync"
 
 	"github.com/go-mysql-org/go-mysql/canal"
 	"github.com/go-mysql-org/go-mysql/mysql"
@@ -14,7 +13,7 @@ import (
 type EventHandler interface {
 	DbName() string
 	TableName() string
-	OnUpdate(from, to any)
+	OnUpdate(datas ...UpdateHandler)
 	OnDelete(datas ...any)
 	OnInsert(datas ...any)
 	Schema() any
@@ -23,10 +22,21 @@ type EventHandler interface {
 type BinlogHandler struct {
 	canal.DummyEventHandler
 	BinlogParser
-	eventMap sync.Map
+	eventMap map[string]EventHandler
 	config   *Config
 	canalCli *canal.Canal
 	errors   chan error
+	running  bool
+}
+
+type rowsEvent struct {
+	*canal.RowsEvent
+	tableKey string
+}
+
+type UpdateHandler struct {
+	From any
+	To   any
 }
 
 func (b *BinlogHandler) OnRow(e *canal.RowsEvent) error {
@@ -39,14 +49,18 @@ func (b *BinlogHandler) OnRow(e *canal.RowsEvent) error {
 			b.handlerError(err)
 		}
 	}()
-	val, ok := b.eventMap.Load(e.Table.Schema + "." + e.Table.Name)
+	event := &rowsEvent{
+		RowsEvent: e,
+		tableKey:  e.Table.Schema + "." + e.Table.Name,
+	}
+	hander, ok := b.eventMap[event.tableKey]
 	if !ok {
 		return nil
 	}
-	hander := val.(EventHandler)
 	var n = 0
 	var step = 1
 	var inserts, deletes []any
+	var updateHandlers []UpdateHandler
 	if e.Action == canal.UpdateAction {
 		n = 1
 		step = 2
@@ -56,18 +70,21 @@ func (b *BinlogHandler) OnRow(e *canal.RowsEvent) error {
 	}
 	for i := n; i < len(e.Rows); i += step {
 		data := hander.Schema()
-		err = b.GetBinLogData(data, e, i)
+		err = b.GetBinLogData(data, event, i)
 		if err != nil {
 			return err
 		}
 		switch e.Action {
 		case canal.UpdateAction:
 			oldData := hander.Schema()
-			err = b.GetBinLogData(oldData, e, i-1)
+			err = b.GetBinLogData(oldData, event, i-1)
 			if err != nil {
 				return err
 			}
-			hander.OnUpdate(oldData, data)
+			updateHandlers = append(updateHandlers, UpdateHandler{
+				From: oldData,
+				To:   data,
+			})
 		case canal.InsertAction:
 			inserts = append(inserts, data)
 		case canal.DeleteAction:
@@ -77,11 +94,17 @@ func (b *BinlogHandler) OnRow(e *canal.RowsEvent) error {
 			return err
 		}
 	}
+	if len(updateHandlers) > 0 {
+		hander.OnUpdate(updateHandlers...)
+		return nil
+	}
 	if len(inserts) > 0 {
 		hander.OnInsert(inserts...)
+		return nil
 	}
 	if len(deletes) > 0 {
 		hander.OnDelete(deletes...)
+		return nil
 	}
 	return nil
 }
@@ -114,10 +137,12 @@ func NewBinlogLister(config *Config) (*BinlogHandler, error) {
 	lister := &BinlogHandler{
 		BinlogParser: BinlogParser{
 			columnTag: config.ColumnTag,
+			onceMap:   make(map[string]*tableSchema, 16),
 		},
 		canalCli: c,
 		errors:   make(chan error, 1),
 		config:   config,
+		eventMap: make(map[string]EventHandler, 16),
 	}
 	lister.canalCli.SetEventHandler(lister)
 	return lister, nil
@@ -143,13 +168,17 @@ func (b *BinlogHandler) OnRotate(header *replication.EventHeader, event *replica
 }
 
 func (b *BinlogHandler) RegisterEventHandler(e EventHandler) {
+	if b.running {
+		panic("can not register event handler after Run")
+	}
 	value := reflect.ValueOf(e.Schema())
 	kind := value.Kind()
 	if kind != reflect.Ptr {
 		panic(fmt.Errorf("expected struct pointer, got %s", kind.String()))
 	}
 	key := e.DbName() + "." + e.TableName()
-	b.eventMap.Store(key, e)
+	b.eventMap[key] = e
+	b.registerOnce(key)
 }
 
 func (b *BinlogHandler) Run() error {
@@ -169,7 +198,9 @@ func (b *BinlogHandler) Run() error {
 			handler.close()
 		}
 		b.canalCli.Close()
+		b.running = false
 	}()
+	b.running = true
 	return b.canalCli.RunFrom(masterPos)
 }
 

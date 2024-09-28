@@ -1,6 +1,10 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/blueWeekend/go-binlog/v1"
+)
 
 type BinLog struct {
 	Id       int64  `db:"id"`
@@ -16,8 +20,8 @@ func (BinLog) DbName() string {
 	return "t"
 }
 
-func (BinLog) OnUpdate(from, to any) {
-	fmt.Println("onupdate", from, to)
+func (BinLog) OnUpdate(datas ...binlog.UpdateHandler) {
+	fmt.Println("onupdate", datas)
 }
 func (BinLog) OnDelete(datas ...any) {
 	data := make([]BinLog, 0, len(datas))
