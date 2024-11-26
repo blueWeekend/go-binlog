@@ -193,17 +193,22 @@ func (b *BinlogHandler) Run() error {
 	if pos.Name != "" {
 		return b.canalCli.RunFrom(pos)
 	}
-	defer func() {
-		if handler, ok := b.config.PosHandler.(*DefaultPosHandler); ok {
-			handler.close()
-		}
-		b.canalCli.Close()
-		b.running = false
-	}()
+	defer b.Close()
 	b.running = true
 	return b.canalCli.RunFrom(masterPos)
 }
 
+func (b *BinlogHandler) Close() {
+	if !b.running {
+		return
+	}
+	b.running = false
+	b.canalCli.Close()
+	if handler, ok := b.config.PosHandler.(*DefaultPosHandler); ok {
+		handler.close()
+	}
+	close(b.errors)
+}
 func (b *BinlogHandler) handlerError(err error) {
 	select {
 	case b.errors <- err:
