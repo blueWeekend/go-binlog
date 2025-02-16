@@ -13,9 +13,9 @@ import (
 type EventHandler interface {
 	DbName() string
 	TableName() string
-	OnUpdate(datas ...UpdateHandler)
-	OnDelete(datas ...any)
-	OnInsert(datas ...any)
+	OnUpdate(header *replication.EventHeader, datas ...UpdateHandler)
+	OnDelete(header *replication.EventHeader, datas ...any)
+	OnInsert(header *replication.EventHeader, datas ...any)
 	Schema() any
 }
 
@@ -95,15 +95,15 @@ func (b *BinlogHandler) OnRow(e *canal.RowsEvent) error {
 		}
 	}
 	if len(updateHandlers) > 0 {
-		hander.OnUpdate(updateHandlers...)
+		hander.OnUpdate(e.Header, updateHandlers...)
 		return nil
 	}
 	if len(inserts) > 0 {
-		hander.OnInsert(inserts...)
+		hander.OnInsert(e.Header, inserts...)
 		return nil
 	}
 	if len(deletes) > 0 {
-		hander.OnDelete(deletes...)
+		hander.OnDelete(e.Header, deletes...)
 		return nil
 	}
 	return nil
